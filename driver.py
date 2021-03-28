@@ -7,6 +7,7 @@ def main():
     data = load(filename)
     graphs = build_graphs(data, resolution=res)
 
+    print('index\tnodes\tedges')
     for idx in range(res):
         print(f'{idx}\t{graphs[idx].order()}\t{graphs[idx].size()}')
 
