@@ -1,7 +1,7 @@
 # cbm-project
 Computational Behavior Modeling project - Spring 2021
 
-# cleaned dataset 
+### cleaned dataset from https://www.kaggle.com/oalvay/enron-emails-complete-preprocessing?select=emails_cleaned.csv
 /data/emails_cleaned_Eric.csv
 
 ### Baselines 
