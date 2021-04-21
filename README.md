@@ -1,6 +1,9 @@
 # cbm-project
 Computational Behavior Modeling project - Spring 2021
 
+# cleaned dataset 
+/data/emails_cleaned_Eric.csv
+
 ### Baselines 
 1. [NetWalk](https://github.com/chengw07/NetWalk)
 2. [node2vec](https://github.com/eliorc/node2vec)
