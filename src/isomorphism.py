@@ -1,9 +1,6 @@
 import networkx as nx
 
 # TODO
-def transition_labeller():
+def graph_labeller():
     raise NotImplementedError
 
-# TODO
-def transition_counter():
-    raise NotImplementedError
