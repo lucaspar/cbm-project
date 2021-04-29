@@ -12,11 +12,34 @@ def transition_counter():
 # TODO
 def egonet_transitions(N, graphs):
     transitions = transition_counter()
-    for v in range(N):
+    for ego in range(N):
         for t in range(len(graphs) - 1):
-            neighbors_G = [w for w in graphs[t].vertex(v).out_neighbors()]
-            neighbors_H = [w for w in graphs[t+1].vertex(v).out_neighbors()]
-            print(len(neighbors_G))
+            g = graphs[t]
+            h = graphs[t+1]
+
+            g_vp = g.new_vertex_property('bool')
+            h_vp = h.new_vertex_property('bool')
+
+            g_nbhd = {w for w in g.vertex(ego).out_neighbors()} | {ego}
+            h_nbhd = {w for w in h.vertex(ego).out_neighbors()} | {ego}
+
+            for v in g.vertices():
+                if v in g_nbhd:
+                    g_vp[v] = True
+                else:
+                    g_vp[v] = False
+            for v in h.vertices():
+                if v in h_nbhd:
+                    h_vp[v] = True
+                else:
+                    h_vp[v] = False
+
+            g_egonet = gt.GraphView(g, vfilt=g_vp, directed=False)
+            h_egonet = gt.GraphView(h, vfilt=h_vp, directed=False)
+
+            print(len(g_nbhd), g_egonet.num_vertices())
+            print(len(h_nbhd), h_egonet.num_vertices())
+            exit()
 
             #G = GraphView(graphs[t], vfilt=)
             #G = graphs[t]

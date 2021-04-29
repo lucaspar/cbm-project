@@ -22,7 +22,7 @@ def load(filename):
 # returns a list of graph_tool graphs
 def build_graphs(N, edgelist, resolution=10):
     if resolution <= 1:
-        G = gt.Graph(directed=True)
+        G = gt.Graph(directed=False)
         G.add_edge_list([(u, v) for (u, v, t) in  edgelist])
         return [G]
 
@@ -40,7 +40,7 @@ def build_graphs(N, edgelist, resolution=10):
     last = [[(u, v) for u, v, t in edgelist if t > timesteps[-1]]]
 
     edge_sequence = first + middle + last
-    graphs = [gt.Graph(directed=True) for edgelist in edge_sequence]
+    graphs = [gt.Graph(directed=False) for edgelist in edge_sequence]
 
     for idx, G in enumerate(graphs):
         G.add_vertex(n=N)
@@ -56,7 +56,7 @@ def load_enumerated_graphs(path='enumerated_graphs', filename='graphs.adj'):
             line = line.strip().split(' ')
             if line[0] == 'Graph':
                 n = int(line[-1].strip('.'))
-                G = gt.Graph(directed=True)
+                G = gt.Graph(directed=False)
                 G.add_vertex(n)
                 for _ in range(n):
                     line = next(infile).strip().strip(';').split(' ')
