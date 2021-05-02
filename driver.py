@@ -5,13 +5,10 @@ def main(verbose=False):
     dataset = './data/eucore.edges'
     resolution = 5
 
-    N, data = load(dataset)
-    graphs = build_graphs(N, data, resolution=resolution)
+    n, data = load(dataset)
+    graphs = build_graphs(n, data, resolution=resolution)
 
-    result = egonet_transitions(N, graphs)
-    exit()
-
-    pass
+    result = egonet_transitions(n, graphs)
 
     if verbose:
         print('index\tnodes\tedges')

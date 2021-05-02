@@ -1,7 +1,7 @@
 from os.path import join
 import graph_tool.all as gt
 
-# renames the vertices so they are integers in the range [0, ... N-1]
+# renames the vertices so they are integers in the range [0, ... n-1]
 def reindex(edgelist):
     vertices = list({u for u, v, t in edgelist} | {v for u, v, t in edgelist})
     f = {v: i for (v, i) in zip(vertices, range(len(vertices)))}
@@ -20,7 +20,7 @@ def load(filename):
     return reindex(edgelist)
 
 # returns a list of graph_tool graphs
-def build_graphs(N, edgelist, resolution=10):
+def build_graphs(n, edgelist, resolution=10):
     if resolution <= 1:
         G = gt.Graph(directed=False)
         G.add_edge_list([(u, v) for (u, v, t) in  edgelist])
@@ -43,15 +43,17 @@ def build_graphs(N, edgelist, resolution=10):
     graphs = [gt.Graph(directed=False) for edgelist in edge_sequence]
 
     for idx, G in enumerate(graphs):
-        G.add_vertex(n=N)
+        G.add_vertex(n=n)
         G.add_edge_list(edge_sequence[idx])
 
     return graphs
 
 # returns a list of graph_tool graphs
-def load_enumerated_graphs(path='enumerated_graphs', filename='graphs.adj'):
+#   if size <= 1, load all the graphs from the 'graphs.adj' file
+#   if size >= 2, load only the graphs with that many vertices
+def load_enumerated_graphs(path='enumerated_graphs', size=0):
     graphs = []
-    with open(join(path, 'graphs.adj')) as infile:
+    with open(join(path, f'graph{size if size > 1 else "s"}.adj')) as infile:
         for line in infile:
             line = line.strip().split(' ')
             if line[0] == 'Graph':
@@ -67,3 +69,9 @@ def load_enumerated_graphs(path='enumerated_graphs', filename='graphs.adj'):
                             G.add_edge(u, v)
                 graphs.append(G)
     return graphs
+
+# pairs up the enumerated graphs of the same size
+def load_graph_pairs(sizes=[2, 3, 4, 5]):
+    enums = {size: load_enumerated_graphs(size=size) for size in sizes}
+    transitions = [(size, g, h) for size in enums for g in enums[size] for h in enums[size] if g.num_edges() > 0 or h.num_edges() > 0]
+    return transitions
