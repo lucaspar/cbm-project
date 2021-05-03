@@ -1,16 +1,19 @@
 from src.data import load, build_graphs
+from src.transitions import egonet_transitions
 
 def main(verbose=False):
-    filename = './data/eucore.edges'
-    res = 5
+    dataset = './data/eucore.edges'
+    resolution = 5
 
-    data = load(filename)
-    graphs = build_graphs(data, resolution=res)
+    n, data = load(dataset)
+    graphs = build_graphs(n, data, resolution=resolution)
+
+    result = egonet_transitions(n, graphs)
 
     if verbose:
         print('index\tnodes\tedges')
-        for idx in range(res):
-            print(f'{idx}\t{graphs[idx].order()}\t{graphs[idx].size()}')
+        for idx, g in enumerate(graphs):
+            print(idx, g)
 
 if __name__ == '__main__':
     main(verbose=True)
