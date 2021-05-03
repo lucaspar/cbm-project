@@ -1,3 +1,7 @@
+.vscode/
+*.emb
+*.gz
+
 .*.swp
 .*.swo
 # Byte-compiled / optimized / DLL files
