@@ -9,6 +9,7 @@ from src.data import load_graph_pairs
 
 def process_transitions(task):
     ego, G, H, transitions = task
+    counts = [0 for _ in transitions]
 
     G_vp = G.new_vertex_property('bool')
     H_vp = H.new_vertex_property('bool')
@@ -16,13 +17,14 @@ def process_transitions(task):
     G_nbhd = {w for w in G.vertex(ego).out_neighbors()} | {ego}
     H_nbhd = {w for w in H.vertex(ego).out_neighbors()} | {ego}
 
+    # construct a sharerd vertex set for the egonets
     for v in G.vertices():
-        if v in G_nbhd:
+        if v in G_nbhd or v in H_nbhd:
             G_vp[v] = True
         else:
             G_vp[v] = False
     for v in H.vertices():
-        if v in H_nbhd:
+        if v in H_nbhd or v in G_nbhd:
             H_vp[v] = True
         else:
             H_vp[v] = False
@@ -30,7 +32,7 @@ def process_transitions(task):
     G_egonet = gt.GraphView(G, vfilt=G_vp, directed=False)
     H_egonet = gt.GraphView(H, vfilt=H_vp, directed=False)
 
-    #for idx, (size, pregraph, postgraph) in enumerate(transitions):
+    # count the transitions
     for idx, (size, pregraph, postgraph) in tqdm(enumerate(transitions), desc='ISOMORPHISMS', total=len(transitions), colour='red', leave=False):
         assert pregraph.num_vertices() == size and postgraph.num_vertices() == size
 
@@ -43,7 +45,6 @@ def process_transitions(task):
                     if np.array_equal(phi.get_array(), psi.get_array()):
                         counts[idx] += 1
 
-    print(sum(counts))
     return counts
 
         #for z in G_egonet.vertices():
@@ -76,7 +77,7 @@ def egonet_transitions(n, graphs, cpus=8, empty=True):
 
     tasks = [(ego, graphs, transitions, cpus//2) for ego in range(n)]
 
-    embeddings = pqdm(tasks, process_ego, n_jobs=cpus//2, desc='NODES', colour='green')
+    embeddings = pqdm(tasks, process_ego, n_jobs=cpus//2, desc='EGOS', colour='green')
 
     return embeddings
 
