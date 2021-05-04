@@ -22,7 +22,7 @@ def load(filename):
     edgelist = []
     with open(filename, 'r') as infile:
         extension = filename.split('.')[-1]
-        if 'emails_cleaned_Dan' in filename and 'csv' in extension:
+        if 'csv' in extension:
             count = 0
             name_dict = {}
             for line in infile:
