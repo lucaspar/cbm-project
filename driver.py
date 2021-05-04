@@ -6,9 +6,13 @@ def main(verbose=False):
     #extension = 'edges'
     #resolution = 5
 
-    dataset = 'emails_cleaned_Dan'
+    #dataset = 'enron'
+    #extension = 'csv'
+    #resolution = 5
+
+    dataset = 'enron_truncated'
     extension = 'csv'
-    resolution = 4
+    resolution = 5
 
     filename = f'./data/{dataset}.{extension}'
 
