@@ -10,7 +10,7 @@ def main(verbose=False):
     #extension = 'csv'
     #resolution = 5
 
-    dataset = 'enron_truncated'
+    dataset = 'enron_truncated_smallestest'
     extension = 'csv'
     resolution = 5
 
