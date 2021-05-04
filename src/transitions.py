@@ -59,7 +59,8 @@ def process_ego(task):
 
     tasks = [(ego, graphs[t], graphs[t+1], transitions) for t in range(len(graphs) - 1)]
     counts = pqdm(tasks, process_transitions, n_jobs=cpus//2, desc='TRANSITIONS', colour='yellow', leave=False)
-    return (ego, counts)
+    counts = np.asarray(counts)
+    return (ego, np.asarray(counts).sum(axis=0).tolist())
 
     #for t in tqdm(range(len(graphs) - 1), desc='ITERATING OVER TIMES', total=len(graphs)-1, colour='yellow', leave=False):
     #for t in range(len(graphs) - 1):
@@ -72,7 +73,7 @@ def process_ego(task):
 # cpus: max number of CPU cores available for parallel processing
 # empty: decides whether the empty (i.e., no edges) subgraph is considered
 def egonet_transitions(n, graphs, cpus=8, empty=True):
-    transitions = load_graph_pairs(sizes=list(range(2, 5)))
+    transitions = load_graph_pairs(sizes=list([2, 3]))
     counts = [0 for _ in transitions]
 
     tasks = [(ego, graphs, transitions, cpus//2) for ego in range(n)]
