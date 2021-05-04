@@ -20,7 +20,7 @@ def main(verbose=False):
         for idx, g in enumerate(graphs):
             print(idx, g)
 
-    embeddings = egonet_transitions(n, graphs, cpus=8)
+    embeddings = egonet_transitions(n, graphs, cpus=32)
 
     with open(f'./embeddings/{dataset}_embeddings.txt', 'w') as outfile:
         for (ego, embedding) in embeddings:

@@ -60,7 +60,7 @@ def process_ego(task):
     tasks = [(ego, graphs[t], graphs[t+1], transitions) for t in range(len(graphs) - 1)]
     counts = pqdm(tasks, process_transitions, n_jobs=cpus//2, desc='TRANSITIONS', colour='yellow', leave=False)
     counts = np.asarray(counts)
-    return (ego, np.asarray(counts).sum(axis=0).tolist())
+    return (ego, np.asarray(counts).mean(axis=0).tolist())
 
     #for t in tqdm(range(len(graphs) - 1), desc='ITERATING OVER TIMES', total=len(graphs)-1, colour='yellow', leave=False):
     #for t in range(len(graphs) - 1):
