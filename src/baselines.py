@@ -11,6 +11,7 @@ from node2vec import Node2Vec
 from kneed import KneeLocator
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.patches as mpatches
 
 from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import SpectralEmbedding
@@ -20,17 +21,41 @@ from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
 
 warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
 
+# INPUTS
 DIR_DATASETS_BASE = "/media/Data/datasets/graphs/"
 DIR_ENRON_DB = os.path.join(DIR_DATASETS_BASE, "enron/preprocessed")
-DIR_PLOTS = os.path.join("outputs", "plots")
+SUBSET_SIZE = -10_000
+FULL_OR_SUBSET_SIZE = SUBSET_SIZE if SUBSET_SIZE > 0 else "full"
+
+# set variables according to experiment type
+exp_type = "enron_full"
+# exp_type = "enron_comparable"
+print(" >>> EXP TYPE: {}".format(exp_type))
+PLOTS_SUBDIR = "plots_{}".format(exp_type)
+if exp_type == "enron_comparable":
+    enron_path = os.path.join(DIR_ENRON_DB, "enron_truncated_smallestest.csv")
+    DW_EMBEDDING = "dw_comparable.emb"
+    N2V_EMBEDDING = "n2v_embedding_{}.emb".format(exp_type)
+
+elif exp_type == "enron_full":
+    enron_path = os.path.join(DIR_ENRON_DB, "emails_cleaned_eric.csv")
+    DW_EMBEDDING = "deepwalk.emb"
+    # N2V_EMBEDDING = "n2v_embedding_full_ericcsv.emb"
+    N2V_EMBEDDING = 'n2v_embedding_{}_{}.emb'.format(exp_type, str(FULL_OR_SUBSET_SIZE))
+
+else:
+    print("UNKNOWN EXPERIMENT TYPE: {}".format(exp_type))
+    exit(1)
+
+# OUTPUTS
+OUTPUT_EXTENSION = "png"    # svg | pdf | png
+DIR_PLOTS = os.path.join("outputs", PLOTS_SUBDIR)
 DIR_EMBEDDINGS = os.path.join("outputs", "embeddings")
 DIR_PREPROCESSED = os.path.join(DIR_EMBEDDINGS, "preprocessed")
 DIR_CACHE = "./cache"
-SUBSET_SIZE = -10_000
 DB_MAX_CLUSTERS = 32
 RANDOM_STATE = 42
-COLORS = list(mcolors.TABLEAU_COLORS.values())
-# COLORS = list(mcolors.CSS4_COLORS.values())
+COLORS = list(mcolors.TABLEAU_COLORS.values()) + list(mcolors.CSS4_COLORS.values())
 
 for d in [DIR_CACHE, DIR_PLOTS, DIR_PREPROCESSED]:
     os.makedirs(d, exist_ok=True)
@@ -91,6 +116,46 @@ def norm_embeddings(embedding_df, fname='embedding_norm.emb', write_to_csv=True)
     return embedding_df
 
 
+def add_value_labels(ax, spacing=5, fontsize=8):
+    """Add labels to the end of each bar in a bar chart.
+
+    Arguments:
+        ax (matplotlib.axes.Axes): The matplotlib object containing the axes
+            of the plot to annotate.
+        spacing (int): The distance between the labels and the bars.
+    """
+
+    # place a label for each bar
+    for rect in ax.patches:
+
+        # get X and Y placement of label from rect.
+        y_value = rect.get_height()
+        x_value = rect.get_x() + rect.get_width() / 2
+
+        # vertical alignment for positive values
+        va = 'bottom'
+
+        # if value of bar is negative: Place label below bar
+        if y_value < 0:
+            spacing *= -1     # invert space to place label below
+            va = 'top'      # vertically align label at top
+
+        # use Y value as label and format number with one decimal place
+        label = "{:.1f}".format(y_value)
+
+        # Create annotation
+        ax.annotate(
+            text=label,
+            xy=(x_value, y_value),
+            fontsize=fontsize,
+            xytext=(0, spacing),        # vertically shift label by `space`
+            textcoords="offset points", # interpret `xytext` as offset in points
+            ha='center',                # horizontally center label
+            va=va                       # vertically align label differently for
+                                        # positive and negative values.
+        )
+
+
 def plot_everything(graph=None, embedding_df=None, clusters=None, meta="", plot_graph=True, plot_scatter=True, cluster_col="cluster"):
     """Create plots given a clusters and node_ids, and/or a graph."""
 
@@ -98,23 +163,58 @@ def plot_everything(graph=None, embedding_df=None, clusters=None, meta="", plot_
     embedding_df = embedding_df.copy()
     embedding_df = embedding_df.set_index("node_name")
 
-    unique_clusters = sorted(embedding_df[cluster_col].unique())
-    color_map = { col: COLORS[idx % len(COLORS)] for idx, col in enumerate(unique_clusters) }
+    # assign colors to the clusters
+    color_map, cluster_freqs = dict(), dict()
+    frequencies_iter = embedding_df[cluster_col].value_counts().iteritems()
+    for idx, (cluster, freq) in enumerate(frequencies_iter):
+        color = COLORS[idx % len(COLORS)]
+        color_map[cluster] = color
+        cluster_freqs[cluster] = freq
+        # print("\tcluster={:<4}\tfreq={:<4}\tcolor={}".format(cluster, freq, color))
+    if len(COLORS) <= len(color_map):
+        print(" >>> WARNING: more clusters than colors available.")
 
     # scatter plot of nodes by cluster
     if plot_scatter and all(x is not None for x in [embedding_df]):
 
         PLT_SUBDIR = "scatter"
         os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-        fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.pdf".format(cluster_col))
+        fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(cluster_col, OUTPUT_EXTENSION))
 
+        # subplots
+        fig, axs = plt.subplots(2, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]})
+        axs = axs.flatten()
+        ax = axs[0]
+
+        marker_size = 5 / np.log10(embedding_df["emb_x"].shape[0]) + 4
         ax = embedding_df.plot.scatter("emb_x", "emb_y",
-            color=embedding_df[cluster_col].map(color_map), s=5 / np.log10(embedding_df["emb_x"].shape[0]) + 4, cmap='viridis'
+            ax=ax,
+            color=embedding_df[cluster_col].map(color_map),
+            s=marker_size,
+            # cmap='viridis',
         )
         ax.set_title("{} {}".format(meta["embedding"], meta["clustering"]))
-        plt.tight_layout()
-        plt.savefig(fname)
-        plt.close()
+
+        # create legend for outliers
+        if -1 in color_map:
+            outlier_color = color_map[-1] if -1 in color_map else None
+            outlier_patch = mpatches.Patch(color=outlier_color, label='DBSCAN Outliers')
+            ax.legend(handles=[outlier_patch])
+            print("]\t\t>> OUTLIER color: {}".format(outlier_color))
+
+        ax = axs[1]
+        x = cluster_freqs.keys()
+        heights = cluster_freqs.values()
+        print("\t\t >> Outlier frequency: {}".format(cluster_freqs[-1] if -1 in cluster_freqs else 0))
+        ax.bar(
+            x, height=heights,
+            color=list(color_map.values()),
+        )
+        add_value_labels(ax, fontsize=6)
+        ax.title.set_text('Frequencies by cluster')
+
+        fig.tight_layout()
+        fig.savefig(fname)
         print("Saved scatter plot as '{}'".format(fname))
 
     # graph plot color-coded by cluster
@@ -145,7 +245,7 @@ def plot_everything(graph=None, embedding_df=None, clusters=None, meta="", plot_
 
         for layout_style, layout_kwargs in all_layouts.items():
 
-            fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}_{}.pdf".format(cluster_col, layout_style))
+            fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}_{}.{}".format(cluster_col, layout_style, OUTPUT_EXTENSION))
 
             plt.figure(figsize=(20,20))
             # pos = nx.spring_layout(graph)
@@ -195,7 +295,7 @@ def db_index_search(emb, min_clusters=2, max_clusters=8, plot_scores=False, titl
         plt.title("DB index scores{}".format(title_suffix))
         if plot_id is None:
             plot_id = str(datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S"))
-        fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.pdf".format(plot_id))
+        fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(plot_id, OUTPUT_EXTENSION))
         plt.tight_layout()
         plt.savefig(fname)
         plt.close()
@@ -214,7 +314,7 @@ def plot_db_scores():
 
     PLT_SUBDIR = "db-index"
     os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-    fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "all-scores.pdf")
+    fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "all-scores.{}".format(OUTPUT_EXTENSION))
 
     data = {
         "n2v_db_search": {
@@ -335,8 +435,7 @@ def n2v_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
     clustering = [ clustering ] if isinstance(clustering, str) else clustering
 
     # init
-    using_subset_size = "full" if SUBSET_SIZE <= 0 else SUBSET_SIZE
-    n2v_emb_file = os.path.join(DIR_EMBEDDINGS, 'n2v_embedding_{}.emb'.format(str(using_subset_size)))
+    n2v_emb_file = os.path.join(DIR_EMBEDDINGS, N2V_EMBEDDING)
     n2v_emb_file_norm = "n2v_norm.emb"
 
     # load graph and get embeddings
@@ -415,7 +514,7 @@ def find_elbow(embedding, knee_id="", n_neighbors=4):
     kneedle.plot_knee()
     PLT_SUBPLOT = "knee"
     os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBPLOT), exist_ok=True)
-    knee_fname = os.path.join(DIR_PLOTS, PLT_SUBPLOT, "{}.pdf".format(knee_id))
+    knee_fname = os.path.join(DIR_PLOTS, PLT_SUBPLOT, "{}.{}".format(knee_id, OUTPUT_EXTENSION))
     plt.savefig(knee_fname)
     plt.close()
     print("Saved knee plot as '{}'".format(knee_fname))
@@ -433,8 +532,7 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
     node_ids_to_emails = { node_id: email for email, node_id in emails_to_node_ids.items() }
 
     # load deepwalk embeddings
-    # dw_emb_fname = os.path.join(DIR_EMBEDDINGS, "deepwalk.emb")
-    dw_emb_fname = os.path.join(DIR_EMBEDDINGS, "dw_comparable.emb")
+    dw_emb_fname = os.path.join(DIR_EMBEDDINGS, DW_EMBEDDING)
     dw_df = pd.read_csv(dw_emb_fname, skiprows=1, sep=" ", names=["node_id", "emb_x", "emb_y"])
     dw_df.insert(0, 'node_name', dw_df["node_id"].apply(lambda x: node_ids_to_emails[x]))
 
@@ -488,8 +586,6 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
 
 def main():
 
-    # enron_path = os.path.join(DIR_ENRON_DB, "emails_cleaned_eric.csv")
-    enron_path = os.path.join(DIR_ENRON_DB, "enron_truncated_smallestest.csv")
     enron_graph = load_enron_as_graph(db_path=enron_path)
 
     clustering = {
@@ -505,21 +601,21 @@ def main():
                 "clustering": list(clustering.keys()),
             },
         },
-        "sc": {
-            "name": "Spectral Clustering",
-            "callable": sc_cluster,
-            "args": {
-                "data_graph": enron_graph,
-                "clustering": list(clustering.keys()),
-            },
-        },
-        "dw": {
-            "name": "Deepwalk",
-            "callable": dw_cluster,
-            "args": {
-                "clustering": list(clustering.keys()),
-            },
-        },
+        # "sc": {
+        #     "name": "Spectral Clustering",
+        #     "callable": sc_cluster,
+        #     "args": {
+        #         "data_graph": enron_graph,
+        #         "clustering": list(clustering.keys()),
+        #     },
+        # },
+        # "dw": {
+        #     "name": "Deepwalk",
+        #     "callable": dw_cluster,
+        #     "args": {
+        #         "clustering": list(clustering.keys()),
+        #     },
+        # },
     }
 
     for method_id, emb_method in embeddings.items():
@@ -554,7 +650,7 @@ def main():
                     "clustering": cl["name"],
                 },
                 # plot_scatter=False,
-                # plot_graph=False,
+                plot_graph=False,
                 cluster_col=cluster_col,
             )
 
