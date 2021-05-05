@@ -108,7 +108,9 @@ def plot_everything(graph=None, embedding_df=None, clusters=None, meta="", plot_
         os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
         fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.pdf".format(cluster_col))
 
-        ax = embedding_df.plot.scatter("emb_x", "emb_y", color=embedding_df[cluster_col].map(color_map), s=0.5, cmap='viridis')
+        ax = embedding_df.plot.scatter("emb_x", "emb_y",
+            color=embedding_df[cluster_col].map(color_map), s=5 / np.log10(embedding_df["emb_x"].shape[0]) + 4, cmap='viridis'
+        )
         ax.set_title("{} {}".format(meta["embedding"], meta["clustering"]))
         plt.tight_layout()
         plt.savefig(fname)
@@ -234,7 +236,7 @@ def plot_db_scores():
         scores = d["scores"]
         label = d["label"]
         x, y = list(scores.keys()), list(scores.values())
-        plt.plot(x, y, marker='o', linestyle='dashed', label=label, linewidth=2, markersize=3)
+        plt.plot(x, y, marker='o', linestyle='dashed', label=label, linewidth=2, markersize=5 / np.log10(len(x)) + 4)
 
     plt.xlabel('Number of clusters (k)')
     plt.ylabel('DB score')
@@ -431,7 +433,8 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
     node_ids_to_emails = { node_id: email for email, node_id in emails_to_node_ids.items() }
 
     # load deepwalk embeddings
-    dw_emb_fname = os.path.join(DIR_EMBEDDINGS, "deepwalk.emb")
+    # dw_emb_fname = os.path.join(DIR_EMBEDDINGS, "deepwalk.emb")
+    dw_emb_fname = os.path.join(DIR_EMBEDDINGS, "dw_comparable.emb")
     dw_df = pd.read_csv(dw_emb_fname, skiprows=1, sep=" ", names=["node_id", "emb_x", "emb_y"])
     dw_df.insert(0, 'node_name', dw_df["node_id"].apply(lambda x: node_ids_to_emails[x]))
 
@@ -485,11 +488,12 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
 
 def main():
 
-    enron_path = os.path.join(DIR_ENRON_DB, "emails_cleaned_eric.csv")
+    # enron_path = os.path.join(DIR_ENRON_DB, "emails_cleaned_eric.csv")
+    enron_path = os.path.join(DIR_ENRON_DB, "enron_truncated_smallestest.csv")
     enron_graph = load_enron_as_graph(db_path=enron_path)
 
     clustering = {
-        # "kmeans": { "name": "K-means" },
+        "kmeans": { "name": "K-means" },
         "dbscan": { "name": "DBSCAN" },
     }
     embeddings = {
@@ -549,8 +553,8 @@ def main():
                     "embedding": emb_method["name"],
                     "clustering": cl["name"],
                 },
-                plot_scatter=False,
-                plot_graph=False,
+                # plot_scatter=False,
+                # plot_graph=False,
                 cluster_col=cluster_col,
             )
 
