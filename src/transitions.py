@@ -5,11 +5,20 @@ from graph_tool.topology import isomorphism, subgraph_isomorphism
 from tqdm import tqdm
 from pqdm.processes import pqdm
 
+from itertools import chain, combinations
+
 from src.data import load_graph_pairs
 
+def powerset(iterable):
+    s = list(iterable)
+    print()
+    print(len(s))
+    print()
+    return chain.from_iterable(combinations(s, r) for r in range(len(s) + 1))
+
 def process_transitions(task):
-    ego, G, H, transitions = task
-    counts = [0 for _ in transitions]
+    ego, G, H, enumerated = task
+    counts = [0 for _ in enumerated]
 
     G_vp = G.new_vertex_property('bool')
     H_vp = H.new_vertex_property('bool')
@@ -32,8 +41,34 @@ def process_transitions(task):
     G_egonet = gt.GraphView(G, vfilt=G_vp, directed=False)
     H_egonet = gt.GraphView(H, vfilt=H_vp, directed=False)
 
+    G_ego_vert = powerset(G_egonet.vertices())
+    H_ego_vert = powerset(H_egonet.vertices())
+
+    G_subgraphs = []
+    H_subgraphs = []
+
+    for vertices in powerset(G_egonet.vertices()):
+        if len(vertices) != 0:
+            vp = G_egonet.new_vertex_property('bool')
+            G_subgraphs.append(gt.GraphView(G_egonet, vfilt=vp, directed=False))
+    for vertices in powerset(H_egonet.vertices()):
+        if len(vertices) != 0:
+            vp = H_egonet.new_vertex_property('bool')
+            H_subgraphs.append(gt.GraphView(H_egonet, vfilt=vp, directed=False))
+
+    transitions = [(g, h) for g in G_subgraphs for h in H_subgraphs \
+                   if g.num_vertices() == h.num_vertices() \
+                   and np.array_equal(g.get_vertices(), h.get_vertices())]
+
+    for idx, (g, h) in tqdm(enumerate(transitions), desc='ISOMORPHISMS', total=len(transitions), colour='red', leave=False):
+        for idx, (size, pregraph, postgraph) in enumerate(enumerated):
+            if isomorphism(g, pregraph) and isomorphism(h, postgraph):
+                counts[idx] += 1
+
+    return counts
+
     # count the transitions
-    for idx, (size, pregraph, postgraph) in tqdm(enumerate(transitions), desc='ISOMORPHISMS', total=len(transitions), colour='red', leave=False):
+    for idx, (size, pregraph, postgraph) in tqdm(enumerate(enumerated), desc='ISOMORPHISMS', total=len(enumerated), colour='red', leave=False):
         assert pregraph.num_vertices() == size and postgraph.num_vertices() == size
 
         G_iso = subgraph_isomorphism(pregraph, G_egonet, induced=True)
@@ -55,9 +90,9 @@ def process_transitions(task):
         #print(g_iso, h_iso)
 
 def process_ego(task):
-    ego, graphs, transitions, cpus = task
+    ego, graphs, enumerated, cpus = task
 
-    tasks = [(ego, graphs[t], graphs[t+1], transitions) for t in range(len(graphs) - 1)]
+    tasks = [(ego, graphs[t], graphs[t+1], enumerated) for t in range(len(graphs) - 1)]
     counts = pqdm(tasks, process_transitions, n_jobs=cpus//2, desc='TRANSITIONS', colour='yellow', leave=False)
     counts = np.asarray(counts)
     return (ego, np.asarray(counts).mean(axis=0).tolist())
@@ -73,10 +108,10 @@ def process_ego(task):
 # cpus: max number of CPU cores available for parallel processing
 # empty: decides whether the empty (i.e., no edges) subgraph is considered
 def egonet_transitions(n, graphs, cpus=8, empty=True):
-    transitions = load_graph_pairs(sizes=list([2, 3]))
-    counts = [0 for _ in transitions]
+    enumerated = load_graph_pairs(sizes=list([2, 3]))
+    counts = [0 for _ in enumerated]
 
-    tasks = [(ego, graphs, transitions, cpus//2) for ego in range(n)]
+    tasks = [(ego, graphs, enumerated, cpus//2) for ego in range(n)]
 
     embeddings = pqdm(tasks, process_ego, n_jobs=cpus//2, desc='EGOS', colour='green')
 
