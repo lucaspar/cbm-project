@@ -7,17 +7,21 @@ from pqdm.processes import pqdm
 
 from itertools import chain, combinations
 
-from src.data import load_graph_pairs
+from src.data_read import load_graph_pairs
 
 def powerset(iterable):
     s = list(iterable)
-    print()
-    print(len(s))
-    print()
     return chain.from_iterable(combinations(s, r) for r in range(len(s) + 1))
 
+def process_iso(task):
+    idx, g, h, pregraph, postgraph = task
+    if isomorphism(g, pregraph) and isomorphism(h, postgraph):
+        return idx, 1
+    else:
+        return idx, 0
+
 def process_transitions(task):
-    ego, G, H, enumerated = task
+    ego, G, H, enumerated, cpus = task
     counts = [0 for _ in enumerated]
 
     G_vp = G.new_vertex_property('bool')
@@ -60,7 +64,13 @@ def process_transitions(task):
                    if g.num_vertices() == h.num_vertices() \
                    and np.array_equal(g.get_vertices(), h.get_vertices())]
 
-    for idx, (g, h) in tqdm(enumerate(transitions), desc='ISOMORPHISMS', total=len(transitions), colour='red', leave=False):
+    #tasks = [(idx, g, h, pregraph, postgraph) for (g, h) in transitions for (idx, (size, pregraph, postgraph)) in enumerate(enumerated)]
+    #results = pqdm(tasks, process_iso, n_jobs=cpus, desc='ISOMORPHISMS', colour='red', leave=False)
+
+    #for idx, count in results:
+    #    counts[idx] += count
+
+    for g, h in tqdm(transitions, desc='ISOMORPHISMS', total=len(transitions), colour='red', leave=False):
         for idx, (size, pregraph, postgraph) in enumerate(enumerated):
             if isomorphism(g, pregraph) and isomorphism(h, postgraph):
                 counts[idx] += 1
@@ -92,8 +102,8 @@ def process_transitions(task):
 def process_ego(task):
     ego, graphs, enumerated, cpus = task
 
-    tasks = [(ego, graphs[t], graphs[t+1], enumerated) for t in range(len(graphs) - 1)]
-    counts = pqdm(tasks, process_transitions, n_jobs=cpus//2, desc='TRANSITIONS', colour='yellow', leave=False)
+    tasks = [(ego, graphs[t], graphs[t+1], enumerated, cpus) for t in range(len(graphs) - 1)]
+    counts = pqdm(tasks, process_transitions, n_jobs=cpus, desc='TRANSITIONS', colour='yellow', leave=False)
     counts = np.asarray(counts)
     return (ego, np.asarray(counts).mean(axis=0).tolist())
 
@@ -111,7 +121,7 @@ def egonet_transitions(n, graphs, cpus=8, empty=True):
     enumerated = load_graph_pairs(sizes=list([2, 3]))
     counts = [0 for _ in enumerated]
 
-    tasks = [(ego, graphs, enumerated, cpus//2) for ego in range(n)]
+    tasks = [(ego, graphs, enumerated, cpus) for ego in range(n)]
 
     embeddings = pqdm(tasks, process_ego, n_jobs=cpus//2, desc='EGOS', colour='green')
 
