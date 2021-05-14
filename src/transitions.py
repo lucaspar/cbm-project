@@ -1,4 +1,5 @@
 import numpy as np
+import igraph as ig
 import graph_tool.all as gt
 from graph_tool.topology import isomorphism, subgraph_isomorphism
 
