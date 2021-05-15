@@ -15,7 +15,7 @@ from random import random, seed
 #   possibilities: ['clique', 'cycle', ...]
 # num_graphs:
 #   number of graphs in the temporal sequence
-def generate_temporal_graph(n, p, anomalies=0.05, anomaly_type='clique', num_graphs=10):
+def generate_temporal_graph(n, p, anomalies=0.05, anomaly_type='clique', num_graphs=10, save=True):
     assert 0 <= p and p <= 1
 
     graphs = []
@@ -41,8 +41,9 @@ def generate_temporal_graph(n, p, anomalies=0.05, anomaly_type='clique', num_gra
         print(anomaly_type)
         raise NotImplementedError
 
-    for graph in graphs:
+    for idx, graph in enumerate(graphs):
         graph.simplify()
+        graph.write_edgelist(f'data/synthetic_{idx}.edgelist')
 
     return graphs
 
