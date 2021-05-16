@@ -43,7 +43,15 @@ def generate_temporal_graph(n, p, anomalies=0.05, anomaly_type='clique', num_gra
 
     for idx, graph in enumerate(graphs):
         graph.simplify()
-        graph.write_edgelist(f'data/synthetic_{idx}.edgelist')
+        graph.write_edgelist(f'data/synthetic_t{idx}_p{str(p).replace(".", "")}_a{str(anomalies).replace(".", "")}.edgelist')
+        #for i in range(len(graph.vs)):
+        #    graph.vs[i]['name'] = i
+
+    with open(f'data/synthetic_ground_truth_p{str(p).replace(".", "")}_a{str(anomalies).replace(".", "")}.nodes', 'w') as outfile:
+        for v in regular:
+            outfile.write(f'{v} 0\n')
+        for v in anomalous:
+            outfile.write(f'{v} 1\n')
 
     return graphs
 

@@ -113,7 +113,7 @@ def process_ego(task):
     #tasks = [(ego, graphs[t], graphs[t+1], pairs) for t in range(len(graphs) - 1)]
 
     counts = []
-    for G, H in [(graphs[t], graphs[t+1]) for t in range(len(graphs) - 1)]:
+    for G, H in tqdm([(graphs[t], graphs[t+1]) for t in range(len(graphs) - 1)], desc='TIMES', total=len(graphs) - 1, colour='yellow', leave=False, disable=True):
         G_nbhd = set(G.vs[ego].neighbors()) | {G.vs[ego]}
         H_nbhd = set(H.vs[ego].neighbors()) | {H.vs[ego]}
 
@@ -128,20 +128,8 @@ def process_ego(task):
         G_subgraphs = []
         H_subgraphs = []
 
-        #for vertices in powerset(G_egonet.vertices()):
-        #    if len(vertices) != 0:
-        #        vp = G_egonet.new_vertex_property('bool')
-        #        G_subgraphs.append(gt.GraphView(G_egonet, vfilt=vp, directed=False))
-        #for vertices in powerset(H_egonet.vertices()):
-        #    if len(vertices) != 0:
-        #        vp = H_egonet.new_vertex_property('bool')
-        #        H_subgraphs.append(gt.GraphView(H_egonet, vfilt=vp, directed=False))
-
-        #transitions = [(g, h) for g in G_subgraphs for h in H_subgraphs \
-        #            if g.num_vertices() == h.num_vertices() \
-        #            and np.array_equal(g.get_vertices(), h.get_vertices())]
-
         counts_t = [0 for _ in pairs]
+
         for idx, (size, pregraph, postgraph) in tqdm(enumerate(pairs), desc='ISOMORPHISMS', total=len(pairs), colour='red', leave=False, disable=False):
             for phi in G_egonet.get_subisomorphisms_vf2(pregraph):
                 for psi in H_egonet.get_subisomorphisms_vf2(postgraph):
@@ -151,19 +139,6 @@ def process_ego(task):
         counts.append(counts_t)
 
     return (ego, np.asarray(counts).mean(axis=0).tolist())
-
-    counts = []
-    #with Pool(2) as pool:
-    for count in tqdm(map(process_transitions, tasks), total=len(tasks), colour='yellow', leave=False):
-        counts.append(count)
-    #counts = pqdm(tasks, process_transitions, n_jobs=cpus, desc='TRANSITIONS', colour='yellow', leave=False)
-    counts = np.asarray(counts)
-    #print(ego, counts)
-    return (ego, np.asarray(counts).mean(axis=0).tolist())
-
-    #for t in tqdm(range(len(graphs) - 1), desc='ITERATING OVER TIMES', total=len(graphs)-1, colour='yellow', leave=False):
-    #for t in range(len(graphs) - 1):
-    #return
 
 # TODO
 # n: the number of vertices in the shared vertex set
@@ -176,8 +151,8 @@ def egonet_transitions(n, graphs):
     tasks = [(ego, graphs, pairs) for ego in range(n)]
 
     embeddings = []
-    with Pool(8) as pool:
-        for embedding in tqdm(pool.imap(process_ego, tasks), total=len(tasks), colour='green', disable=False):
+    with Pool(4) as pool:
+        for embedding in tqdm(pool.imap(process_ego, tasks), desc='NODES', total=len(tasks), colour='green', leave=True, disable=False):
             embeddings.append(embedding)
     #with Pool(2) as pool:
     #    for embedding in tqdm(pool.imap(process_ego, tasks), total=len(tasks), colour='green', leave=False):

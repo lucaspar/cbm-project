@@ -19,8 +19,10 @@ def real_data(name='enron_truncated_smallestest', extension='csv', resolution=5)
 def main(filename='', datatype='', verbose=False):
     # parameters for synthetic data
     n = 500
-    p = 0.005
-    anomalies = 0.05
+    #p = 0.0025
+    #anomalies = 0.05
+    p = 0.01
+    anomalies = 0.03
     anomaly_type = 'clique'
     num_graphs = 5
 
