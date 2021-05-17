@@ -22,26 +22,36 @@ from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
 warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
 
 # INPUTS
-DIR_DATASETS_BASE = "/media/Data/datasets/graphs/"
-DIR_ENRON_DB = os.path.join(DIR_DATASETS_BASE, "enron/preprocessed")
+# DIR_DATASETS_BASE = "/media/Data/datasets/graphs/"
+DIR_DATASETS_BASE = "../data/"
+# DIR_DB = os.path.join(DIR_DATASETS_BASE, "enron/preprocessed")
+DIR_DB = DIR_DATASETS_BASE
 SUBSET_SIZE = -10_000
 FULL_OR_SUBSET_SIZE = SUBSET_SIZE if SUBSET_SIZE > 0 else "full"
 
 # set variables according to experiment type
-exp_type = "enron_full"
+# exp_type = "enron_full"
 # exp_type = "enron_comparable"
+# exp_type = "synth_p001_a003"
+exp_type = "synth_p00025_a005"
+db_path = None
+
 print(" >>> EXP TYPE: {}".format(exp_type))
 PLOTS_SUBDIR = "plots_{}".format(exp_type)
 if exp_type == "enron_comparable":
-    enron_path = os.path.join(DIR_ENRON_DB, "enron_truncated_smallestest.csv")
+    db_path = os.path.join(DIR_DB, "enron_truncated_smallestest.csv")
     DW_EMBEDDING = "dw_comparable.emb"
     N2V_EMBEDDING = "n2v_embedding_{}.emb".format(exp_type)
 
 elif exp_type == "enron_full":
-    enron_path = os.path.join(DIR_ENRON_DB, "emails_cleaned_eric.csv")
+    db_path = os.path.join(DIR_DB, "emails_cleaned_eric.csv")
     DW_EMBEDDING = "deepwalk.emb"
     # N2V_EMBEDDING = "n2v_embedding_full_ericcsv.emb"
     N2V_EMBEDDING = 'n2v_embedding_{}_{}.emb'.format(exp_type, str(FULL_OR_SUBSET_SIZE))
+
+elif exp_type in ["synth_p001_a003", "synth_p00025_a005"]:
+    DW_EMBEDDING = "dw_{}.emb".format(exp_type)
+    N2V_EMBEDDING = 'n2v_{}_{}.emb'.format(exp_type, str(FULL_OR_SUBSET_SIZE))
 
 else:
     print("UNKNOWN EXPERIMENT TYPE: {}".format(exp_type))
@@ -61,20 +71,45 @@ for d in [DIR_CACHE, DIR_PLOTS, DIR_PREPROCESSED]:
     os.makedirs(d, exist_ok=True)
 
 
-def load_enron_as_graph(db_path):
+def load_synthetic_dataset(exp_type):
+    """
+        Loads the synthetically generated dataset returning two dataframes:
+        one with the edge list, the other with the node ground-truth.
+    """
+
+    ds_split = exp_type.split("_")
+    dataset, variation = ds_split[0], "_".join(ds_split[1:])
+
+    db_edges = os.path.join(DIR_DB, dataset, "{}.edgelist".format(variation))
+    db_nodes = os.path.join(DIR_DB, dataset, "{}.nodes".format(variation))
+    df_edges = pd.read_csv(db_edges, sep="\s+", header=None, names=["From", "To", "Timestamp"])
+    df_nodes = pd.read_csv(db_nodes, sep="\s+", header=None, names=["Node", "Anomaly"])
+
+    return df_edges, df_nodes
+
+
+def load_edgelist_as_graph(db_path=None, df=None, edge_attr=["Dates"]):
     """Loads pre-processed Enron dataset as a graph."""
 
-    # load dataset as a dataframe
-    print("Loading {}...".format(db_path))
-    email_df = pd.read_csv(db_path)
-    subset = email_df[0:SUBSET_SIZE] if SUBSET_SIZE > 0 else email_df
+    assert any([x is not None for x in [db_path, df]]),\
+        "'db_path' or 'df' must be passed to this method."
 
-    # remove spaces from emails
-    for col in ["From", "To"]:
-        email_df[col] = email_df[col].apply(lambda x: x.replace(" ", ""))
+    if df is None:
+
+        # load dataset as a dataframe
+        print("Loading {}...".format(db_path))
+        df = pd.read_csv(db_path)
+
+        # remove spaces from emails
+        for col in ["From", "To"]:
+            df[col] = df[col].apply(lambda x: x.replace(" ", ""))
+
+    else:
+        print("Using dataset loaded in dataframe...")
 
     # build graph
-    graph = nx.from_pandas_edgelist(subset, 'From', 'To', edge_attr=['Dates'])
+    subset = df[0:SUBSET_SIZE] if SUBSET_SIZE > 0 else df
+    graph = nx.from_pandas_edgelist(subset, 'From', 'To', edge_attr=edge_attr)
 
     return graph
 
@@ -586,7 +621,10 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
 
 def main():
 
-    enron_graph = load_enron_as_graph(db_path=enron_path)
+    df_edges, df_nodes = load_synthetic_dataset(exp_type=exp_type)
+
+    ds_graph = load_edgelist_as_graph(db_path=db_path) \
+        if db_path is not None else load_edgelist_as_graph(df=df_edges, edge_attr=["Timestamp"])
 
     clustering = {
         "kmeans": { "name": "K-means" },
@@ -597,7 +635,7 @@ def main():
             "name": "Node2Vec",
             "callable": n2v_cluster,
             "args": {
-                "data_graph": enron_graph,
+                "data_graph": ds_graph,
                 "clustering": list(clustering.keys()),
             },
         },
@@ -605,7 +643,7 @@ def main():
         #     "name": "Spectral Clustering",
         #     "callable": sc_cluster,
         #     "args": {
-        #         "data_graph": enron_graph,
+        #         "data_graph": ds_graph,
         #         "clustering": list(clustering.keys()),
         #     },
         # },
@@ -643,7 +681,7 @@ def main():
             # print(embedding_df[cluster_col].value_counts())
 
             plot_everything(
-                graph=enron_graph,
+                graph=ds_graph,
                 embedding_df=embedding_df,
                 meta={
                     "embedding": emb_method["name"],
