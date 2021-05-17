@@ -1,117 +1,21 @@
 #!/bin/env python
 import os
-import warnings
-from datetime import datetime
 
 import joblib
 import numpy as np
 import pandas as pd
 import networkx as nx
 from node2vec import Node2Vec
-from kneed import KneeLocator
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import matplotlib.patches as mpatches
 
-from sklearn.neighbors import NearestNeighbors
 from sklearn.manifold import SpectralEmbedding
 from sklearn.metrics import davies_bouldin_score
 from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
 
-
-warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
-
-# INPUTS
-# DIR_DATASETS_BASE = "/media/Data/datasets/graphs/"
-DIR_DATASETS_BASE = "../data/"
-# DIR_DB = os.path.join(DIR_DATASETS_BASE, "enron/preprocessed")
-DIR_DB = DIR_DATASETS_BASE
-SUBSET_SIZE = -10_000
-FULL_OR_SUBSET_SIZE = SUBSET_SIZE if SUBSET_SIZE > 0 else "full"
-
-# set variables according to experiment type
-# exp_type = "enron_full"
-# exp_type = "enron_comparable"
-# exp_type = "synth_p001_a003"
-exp_type = "synth_p00025_a005"
-db_path = None
-
-print(" >>> EXP TYPE: {}".format(exp_type))
-PLOTS_SUBDIR = "plots_{}".format(exp_type)
-if exp_type == "enron_comparable":
-    db_path = os.path.join(DIR_DB, "enron_truncated_smallestest.csv")
-    DW_EMBEDDING = "dw_comparable.emb"
-    N2V_EMBEDDING = "n2v_embedding_{}.emb".format(exp_type)
-
-elif exp_type == "enron_full":
-    db_path = os.path.join(DIR_DB, "emails_cleaned_eric.csv")
-    DW_EMBEDDING = "deepwalk.emb"
-    # N2V_EMBEDDING = "n2v_embedding_full_ericcsv.emb"
-    N2V_EMBEDDING = 'n2v_embedding_{}_{}.emb'.format(exp_type, str(FULL_OR_SUBSET_SIZE))
-
-elif exp_type in ["synth_p001_a003", "synth_p00025_a005"]:
-    DW_EMBEDDING = "dw_{}.emb".format(exp_type)
-    N2V_EMBEDDING = 'n2v_{}_{}.emb'.format(exp_type, str(FULL_OR_SUBSET_SIZE))
-
-else:
-    print("UNKNOWN EXPERIMENT TYPE: {}".format(exp_type))
-    exit(1)
-
-# OUTPUTS
-OUTPUT_EXTENSION = "png"    # svg | pdf | png
-DIR_PLOTS = os.path.join("outputs", PLOTS_SUBDIR)
-DIR_EMBEDDINGS = os.path.join("outputs", "embeddings")
-DIR_PREPROCESSED = os.path.join(DIR_EMBEDDINGS, "preprocessed")
-DIR_CACHE = "./cache"
-DB_MAX_CLUSTERS = 32
-RANDOM_STATE = 42
-COLORS = list(mcolors.TABLEAU_COLORS.values()) + list(mcolors.CSS4_COLORS.values())
-
-for d in [DIR_CACHE, DIR_PLOTS, DIR_PREPROCESSED]:
-    os.makedirs(d, exist_ok=True)
+import helper
 
 
-def load_synthetic_dataset(exp_type):
-    """
-        Loads the synthetically generated dataset returning two dataframes:
-        one with the edge list, the other with the node ground-truth.
-    """
-
-    ds_split = exp_type.split("_")
-    dataset, variation = ds_split[0], "_".join(ds_split[1:])
-
-    db_edges = os.path.join(DIR_DB, dataset, "{}.edgelist".format(variation))
-    db_nodes = os.path.join(DIR_DB, dataset, "{}.nodes".format(variation))
-    df_edges = pd.read_csv(db_edges, sep="\s+", header=None, names=["From", "To", "Timestamp"])
-    df_nodes = pd.read_csv(db_nodes, sep="\s+", header=None, names=["Node", "Anomaly"])
-
-    return df_edges, df_nodes
-
-
-def load_edgelist_as_graph(db_path=None, df=None, edge_attr=["Dates"]):
-    """Loads pre-processed Enron dataset as a graph."""
-
-    assert any([x is not None for x in [db_path, df]]),\
-        "'db_path' or 'df' must be passed to this method."
-
-    if df is None:
-
-        # load dataset as a dataframe
-        print("Loading {}...".format(db_path))
-        df = pd.read_csv(db_path)
-
-        # remove spaces from emails
-        for col in ["From", "To"]:
-            df[col] = df[col].apply(lambda x: x.replace(" ", ""))
-
-    else:
-        print("Using dataset loaded in dataframe...")
-
-    # build graph
-    subset = df[0:SUBSET_SIZE] if SUBSET_SIZE > 0 else df
-    graph = nx.from_pandas_edgelist(subset, 'From', 'To', edge_attr=edge_attr)
-
-    return graph
+# global params
+RANDOM_STATE = 42           # seed to be used in pseudorandom operations
 
 
 def run_node2vec(graph, emb_out_file='embedding.emb'):
@@ -151,239 +55,7 @@ def norm_embeddings(embedding_df, fname='embedding_norm.emb', write_to_csv=True)
     return embedding_df
 
 
-def add_value_labels(ax, spacing=5, fontsize=8):
-    """Add labels to the end of each bar in a bar chart.
-
-    Arguments:
-        ax (matplotlib.axes.Axes): The matplotlib object containing the axes
-            of the plot to annotate.
-        spacing (int): The distance between the labels and the bars.
-    """
-
-    # place a label for each bar
-    for rect in ax.patches:
-
-        # get X and Y placement of label from rect.
-        y_value = rect.get_height()
-        x_value = rect.get_x() + rect.get_width() / 2
-
-        # vertical alignment for positive values
-        va = 'bottom'
-
-        # if value of bar is negative: Place label below bar
-        if y_value < 0:
-            spacing *= -1     # invert space to place label below
-            va = 'top'      # vertically align label at top
-
-        # use Y value as label and format number with one decimal place
-        label = "{:.1f}".format(y_value)
-
-        # Create annotation
-        ax.annotate(
-            text=label,
-            xy=(x_value, y_value),
-            fontsize=fontsize,
-            xytext=(0, spacing),        # vertically shift label by `space`
-            textcoords="offset points", # interpret `xytext` as offset in points
-            ha='center',                # horizontally center label
-            va=va                       # vertically align label differently for
-                                        # positive and negative values.
-        )
-
-
-def plot_everything(graph=None, embedding_df=None, clusters=None, meta="", plot_graph=True, plot_scatter=True, cluster_col="cluster"):
-    """Create plots given a clusters and node_ids, and/or a graph."""
-
-    assert [x in meta for x in ["embedding", "clustering"]]
-    embedding_df = embedding_df.copy()
-    embedding_df = embedding_df.set_index("node_name")
-
-    # assign colors to the clusters
-    color_map, cluster_freqs = dict(), dict()
-    frequencies_iter = embedding_df[cluster_col].value_counts().iteritems()
-    for idx, (cluster, freq) in enumerate(frequencies_iter):
-        color = COLORS[idx % len(COLORS)]
-        color_map[cluster] = color
-        cluster_freqs[cluster] = freq
-        # print("\tcluster={:<4}\tfreq={:<4}\tcolor={}".format(cluster, freq, color))
-    if len(COLORS) <= len(color_map):
-        print(" >>> WARNING: more clusters than colors available.")
-
-    # scatter plot of nodes by cluster
-    if plot_scatter and all(x is not None for x in [embedding_df]):
-
-        PLT_SUBDIR = "scatter"
-        os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-        fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(cluster_col, OUTPUT_EXTENSION))
-
-        # subplots
-        fig, axs = plt.subplots(2, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]})
-        axs = axs.flatten()
-        ax = axs[0]
-
-        marker_size = 5 / np.log10(embedding_df["emb_x"].shape[0]) + 4
-        ax = embedding_df.plot.scatter("emb_x", "emb_y",
-            ax=ax,
-            color=embedding_df[cluster_col].map(color_map),
-            s=marker_size,
-            # cmap='viridis',
-        )
-        ax.set_title("{} {}".format(meta["embedding"], meta["clustering"]))
-
-        # create legend for outliers
-        if -1 in color_map:
-            outlier_color = color_map[-1] if -1 in color_map else None
-            outlier_patch = mpatches.Patch(color=outlier_color, label='DBSCAN Outliers')
-            ax.legend(handles=[outlier_patch])
-            print("]\t\t>> OUTLIER color: {}".format(outlier_color))
-
-        ax = axs[1]
-        x = cluster_freqs.keys()
-        heights = cluster_freqs.values()
-        print("\t\t >> Outlier frequency: {}".format(cluster_freqs[-1] if -1 in cluster_freqs else 0))
-        ax.bar(
-            x, height=heights,
-            color=list(color_map.values()),
-        )
-        add_value_labels(ax, fontsize=6)
-        ax.title.set_text('Frequencies by cluster')
-
-        fig.tight_layout()
-        fig.savefig(fname)
-        print("Saved scatter plot as '{}'".format(fname))
-
-    # graph plot color-coded by cluster
-    if plot_graph and all(x is not None for x in [graph, embedding_df]):
-
-        PLT_SUBDIR = "graph"
-        os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-
-        # params
-        all_layouts = {
-            # "spectral_layout": {},    # no convergence after 28k iterations
-            # "spiral_layout": {},
-            "spring_layout": {
-                "k": 0.1,
-            },
-        }
-
-        # get list of node colors with the order they appear in the graph
-        node_colors = list()
-        for node_name in graph:
-            try:
-                node_color = embedding_df.loc[node_name][cluster_col]
-                node_colors.append(node_color)
-                # print("OK: {}".format(node_name))
-            except Exception as err:
-                print("Warning:\t{}".format(err))
-                node_colors.append(666)
-
-        for layout_style, layout_kwargs in all_layouts.items():
-
-            fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}_{}.{}".format(cluster_col, layout_style, OUTPUT_EXTENSION))
-
-            plt.figure(figsize=(20,20))
-            # pos = nx.spring_layout(graph)
-            pos = getattr(nx, layout_style)(graph, **layout_kwargs)
-            nx.draw_networkx(
-                graph,
-                pos,
-                node_size=25,
-                node_color=node_colors,
-                cmap='viridis',
-                with_labels=False,
-                edge_color=(0, 0, 1, 0.05),
-                width=2,
-            )
-            plt.tight_layout()
-            plt.savefig(fname)
-            plt.close()
-            print("Saved graph plot as '{}'".format(fname))
-
-
-def db_index_search(emb, min_clusters=2, max_clusters=8, plot_scores=False, title_suffix="", plot_id=None):
-    """
-        Performs a search for the optimal number of clusters in an embedded space using Davies-Bouldin index.
-        Returns:
-            best_k:         optimal number of clusters by computing Davies-Bouldin index.
-            best_db_index:  optimal Davies-Bouldin index achieved by `best_k`.
-            best_kmeans:    the optimal clustering.
-            scores:         all DB indices computed as a dictionary { "k": "DB index" }.
-    """
-
-    PLT_SUBDIR = "db-index"
-    os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-
-    best_k = min_clusters
-    best_db_index = np.inf
-    scores = dict()
-    for current_k in range(min_clusters, max_clusters + 1, 1):
-        kmeans = KMeans(n_clusters=current_k, random_state=RANDOM_STATE).fit(emb)
-        current_db_index = davies_bouldin_score(emb, kmeans.labels_)
-        scores[current_k] = current_db_index
-        if current_db_index < best_db_index:
-            best_k, best_db_index, best_kmeans = current_k, current_db_index, kmeans
-
-    if plot_scores:
-        x, y = list(scores.keys()), list(scores.values())
-        plt.plot(x, y, color='green', marker='o', linestyle='dashed', linewidth=2, markersize=12)
-        plt.title("DB index scores{}".format(title_suffix))
-        if plot_id is None:
-            plot_id = str(datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S"))
-        fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(plot_id, OUTPUT_EXTENSION))
-        plt.tight_layout()
-        plt.savefig(fname)
-        plt.close()
-        print("Saved Davies-Bouldin plot as '{}'".format(fname))
-
-    return {
-        "best_k":           best_k,
-        "best_db_index":    best_db_index,
-        "best_kmeans":      best_kmeans,
-        "scores":           scores,
-    }
-
-
-def plot_db_scores():
-    """Plots DB score curves in the same plot."""
-
-    PLT_SUBDIR = "db-index"
-    os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-    fname = os.path.join(DIR_PLOTS, PLT_SUBDIR, "all-scores.{}".format(OUTPUT_EXTENSION))
-
-    data = {
-        "n2v_db_search": {
-            "label": "Node2Vec",
-        },
-        "sc_db_search": {
-            "label": "Spectral Clustering",
-        },
-        "dw_db_search": {
-            "label": "DeepWalk",
-        },
-    }
-    for fname in data.keys():
-        fpath = os.path.join(DIR_CACHE, fname)
-        cached = joblib.load(fpath)
-        data[fname].update(cached)
-
-    for fname, d in data.items():
-        scores = d["scores"]
-        label = d["label"]
-        x, y = list(scores.keys()), list(scores.values())
-        plt.plot(x, y, marker='o', linestyle='dashed', label=label, linewidth=2, markersize=5 / np.log10(len(x)) + 4)
-
-    plt.xlabel('Number of clusters (k)')
-    plt.ylabel('DB score')
-    plt.title("Davies-Bouldin clustering scores (lower is better)".format())
-    plt.legend(loc="upper right")
-    plt.tight_layout()
-    plt.savefig(fname)
-    plt.close()
-    print("Saved joint Davies-Bouldin plot as '{}'".format(fname))
-
-
-def sc_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
+def sc_cluster(data_graph, clustering=["kmeans"], plot_db_index=True, exp=None, cluster_gt=None):
     """
         Runs spectral embedding + clustering on a graph dataset,
         optionally computing the DB-index for clustering evaluation.
@@ -420,17 +92,15 @@ def sc_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
     # run k-means on spectral embeddings
     if "kmeans" in clustering:
 
-        if plot_db_index:
-            db_search = db_index_search(
+        if plot_db_index and exp is not None:
+            db_search = exp.db_index_search(
                 emb=sc_emb,
                 min_clusters=2,
-                max_clusters=DB_MAX_CLUSTERS,
                 plot_scores=True,
                 title_suffix=" - Spectral Clustering",
                 plot_id="sc",
             )
             sc_kmeans = db_search["best_kmeans"]
-            joblib.dump(db_search, os.path.join(DIR_CACHE, "sc_db_search"), compress=4)
         else:
             sc_kmeans = KMeans(n_clusters=4, random_state=RANDOM_STATE).fit(sc_emb)
 
@@ -445,7 +115,7 @@ def sc_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
 
         # find optimal number of neighbors in cluster
         method_id = "sc"
-        _, epsilon = find_elbow(sc_emb, knee_id=method_id)
+        _, epsilon = exp.find_elbow(sc_emb, knee_id=method_id)
         print("Elbow: {}".format(epsilon))
 
         dbscan = DBSCAN(eps=epsilon, metric="euclidean", min_samples=5).fit(sc_emb)
@@ -464,21 +134,20 @@ def sc_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
     return sc_df
 
 
-def n2v_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
+def n2v_cluster(emb_fname, data_graph, clustering=["kmeans"], exp=None, plot_db_index=True, cluster_gt=None):
     """Runs node2vec embedding + clustering on dataset."""
 
     clustering = [ clustering ] if isinstance(clustering, str) else clustering
 
     # init
-    n2v_emb_file = os.path.join(DIR_EMBEDDINGS, N2V_EMBEDDING)
     n2v_emb_file_norm = "n2v_norm.emb"
 
     # load graph and get embeddings
-    if not os.path.exists(n2v_emb_file):
-        _ = run_node2vec(graph=data_graph, emb_out_file=n2v_emb_file)
+    if not os.path.exists(emb_fname):
+        _ = run_node2vec(graph=data_graph, emb_out_file=emb_fname)
 
     # reload embeddings and convert their email addresses to numeric IDs
-    n2v_embedding_df = pd.read_csv(n2v_emb_file, sep=' ')
+    n2v_embedding_df = pd.read_csv(emb_fname, sep=' ')
     n2v_embedding_df = norm_embeddings(n2v_embedding_df, fname=n2v_emb_file_norm)
 
     # load normalized embeddings
@@ -489,17 +158,15 @@ def n2v_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
     if "kmeans" in clustering:
         if not plot_db_index:
             n2v_kmeans = KMeans(n_clusters=4, random_state=RANDOM_STATE).fit(n2v_emb)
-        else:
-            db_search = db_index_search(
+        elif exp is not None:
+            db_search = exp.db_index_search(
                 emb=n2v_emb,
                 min_clusters=2,
-                max_clusters=DB_MAX_CLUSTERS,
                 plot_scores=True,
                 title_suffix=" - Node2Vec",
                 plot_id="n2v",
             )
             n2v_kmeans = db_search["best_kmeans"]
-            joblib.dump(db_search, os.path.join(DIR_CACHE, "n2v_db_search"), compress=4)
 
         # augment dataframe with the clusters found
         n2v_embedding_df.insert(
@@ -513,7 +180,7 @@ def n2v_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
 
         # find optimal number of neighbors in cluster
         method_id = "n2v"
-        _, epsilon = find_elbow(n2v_emb, knee_id=method_id)
+        _, epsilon = exp.find_elbow(n2v_emb, knee_id=method_id)
         print("Elbow: {}".format(epsilon))
 
         dbscan = DBSCAN(eps=epsilon, metric="euclidean", min_samples=5).fit(n2v_emb)
@@ -530,46 +197,22 @@ def n2v_cluster(data_graph, clustering=["kmeans"], plot_db_index=True):
     return n2v_embedding_df
 
 
-def find_elbow(embedding, knee_id="", n_neighbors=4):
+def dw_cluster(emb_fname, node_map_fname, clustering="kmeans", exp=None, plot_db_index=True, cluster_gt=None):
     """
-        Given an embedding, finds and plots the nearest-neighbor distances in that space.
-        It returns the coordinates of the 'knee' of this curve, point which indicates the
-        optimal 'maximum distance' for a clustering algorithm such as DBSCAN to determine outliers.
+        Loads precomputed deepwalk embeddings and runs the clustering on them.
+        emb_fname (str):        path to file containing the list of node IDs coordinates in the X,Y embedding space.
+        node_map_fname (str):   path to file containing a dictionary with { node_id: node_name } key-value pairs.
     """
-
-    knn = NearestNeighbors(n_neighbors=n_neighbors)
-    knn_fit = knn.fit(embedding)
-    distances, _ = knn_fit.kneighbors(embedding)
-    distances = np.sort(distances, axis=0)[:,1]
-    kneedle = KneeLocator(np.linspace(0, len(distances)-1, len(distances)), distances, S=1.0, curve="convex", direction="increasing")
-    knee_x, knee_y = kneedle.elbow, distances[int(kneedle.elbow)]
-
-    print('Knee: the Maximum Curvature point is (x = {}, y = {})'.format(knee_x, knee_y))
-
-    kneedle.plot_knee()
-    PLT_SUBPLOT = "knee"
-    os.makedirs(os.path.join(DIR_PLOTS, PLT_SUBPLOT), exist_ok=True)
-    knee_fname = os.path.join(DIR_PLOTS, PLT_SUBPLOT, "{}.{}".format(knee_id, OUTPUT_EXTENSION))
-    plt.savefig(knee_fname)
-    plt.close()
-    print("Saved knee plot as '{}'".format(knee_fname))
-
-    return knee_x, knee_y
-
-
-def dw_cluster(clustering="kmeans", plot_db_index=True):
 
     clustering = [ clustering ] if isinstance(clustering, str) else clustering
 
     # load node email-id lookup
-    lookup_file = os.path.join(DIR_EMBEDDINGS, "deepwalk_node_lookup.bin")
-    emails_to_node_ids = joblib.load(lookup_file)
-    node_ids_to_emails = { node_id: email for email, node_id in emails_to_node_ids.items() }
+    node_names_to_node_ids = joblib.load(node_map_fname)
+    node_ids_to_node_names = { node_id: name for name, node_id in node_names_to_node_ids.items() }
 
     # load deepwalk embeddings
-    dw_emb_fname = os.path.join(DIR_EMBEDDINGS, DW_EMBEDDING)
-    dw_df = pd.read_csv(dw_emb_fname, skiprows=1, sep=" ", names=["node_id", "emb_x", "emb_y"])
-    dw_df.insert(0, 'node_name', dw_df["node_id"].apply(lambda x: node_ids_to_emails[x]))
+    dw_df = pd.read_csv(emb_fname, skiprows=1, sep=" ", names=["node_id", "emb_x", "emb_y"])
+    dw_df.insert(0, 'node_name', dw_df["node_id"].apply(lambda x: node_ids_to_node_names[x]))
 
     # extract embeddings only
     dw_emb = dw_df[["emb_x", "emb_y"]].to_numpy()
@@ -578,17 +221,15 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
 
         if not plot_db_index:
             dw_kmeans = KMeans(n_clusters=4, random_state=RANDOM_STATE).fit(dw_emb)
-        else:
-            db_search = db_index_search(
+        elif exp is not None:
+            db_search = exp.db_index_search(
                 emb=dw_emb,
                 min_clusters=2,
-                max_clusters=DB_MAX_CLUSTERS,
                 plot_scores=True,
                 title_suffix=" - DeepWalk",
                 plot_id="dw",
             )
             dw_kmeans = db_search["best_kmeans"]
-            joblib.dump(db_search, os.path.join(DIR_CACHE, "dw_db_search"), compress=4)
 
         # augment dataframe with the clusters found
         dw_df.insert(
@@ -602,7 +243,7 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
 
         # find optimal number of neighbors in cluster
         method_id = "dw"
-        _, epsilon = find_elbow(dw_emb, knee_id=method_id)
+        _, epsilon = exp.find_elbow(dw_emb, knee_id=method_id)
         print("Elbow: {}".format(epsilon))
 
         dbscan = DBSCAN(eps=epsilon, metric="euclidean", min_samples=5).fit(dw_emb)
@@ -621,10 +262,23 @@ def dw_cluster(clustering="kmeans", plot_db_index=True):
 
 def main():
 
-    df_edges, df_nodes = load_synthetic_dataset(exp_type=exp_type)
+    # params
+    # exp_type = "enron_full"
+    # exp_type = "enron_comparable"
+    # exp_type = "synth_p001_a003"
+    exp_type = "synth_p00025_a005"
 
-    ds_graph = load_edgelist_as_graph(db_path=db_path) \
-        if db_path is not None else load_edgelist_as_graph(df=df_edges, edge_attr=["Timestamp"])
+    dir_dataset_base = "/media/Data/datasets/graphs/"
+    dir_dataset_base = "../data/"
+    exp = helper.Experiment(
+        exp_type,
+        dir_dataset_base=dir_dataset_base,
+        random_state=RANDOM_STATE,
+    )
+
+    df_edges, df_nodes = exp.load_synthetic_dataset(exp_type=exp_type)
+    ds_graph = exp.load_edgelist_as_graph(db_path=exp.db_path) \
+        if exp.db_path is not None else exp.load_edgelist_as_graph(df=df_edges, edge_attr=["Timestamp"])
 
     clustering = {
         "kmeans": { "name": "K-means" },
@@ -635,25 +289,34 @@ def main():
             "name": "Node2Vec",
             "callable": n2v_cluster,
             "args": {
+                "emb_fname": os.path.join(exp.DIR_EMBEDDINGS, exp.N2V_EMBEDDING),
                 "data_graph": ds_graph,
                 "clustering": list(clustering.keys()),
+                "cluster_gt": df_nodes,
+                "exp": exp,
             },
         },
-        # "sc": {
-        #     "name": "Spectral Clustering",
-        #     "callable": sc_cluster,
-        #     "args": {
-        #         "data_graph": ds_graph,
-        #         "clustering": list(clustering.keys()),
-        #     },
-        # },
-        # "dw": {
-        #     "name": "Deepwalk",
-        #     "callable": dw_cluster,
-        #     "args": {
-        #         "clustering": list(clustering.keys()),
-        #     },
-        # },
+        "sc": {
+            "name": "Spectral Clustering",
+            "callable": sc_cluster,
+            "args": {
+                "data_graph": ds_graph,
+                "clustering": list(clustering.keys()),
+                "cluster_gt": df_nodes,
+                "exp": exp,
+            },
+        },
+        "dw": {
+            "name": "Deepwalk",
+            "callable": dw_cluster,
+            "args": {
+                "emb_fname": os.path.join(exp.DIR_EMBEDDINGS, exp.DW_EMBEDDING),
+                "node_map_fname": os.path.join(exp.DIR_EMBEDDINGS, "deepwalk_node_lookup.bin"),
+                "clustering": list(clustering.keys()),
+                "cluster_gt": df_nodes,
+                "exp": exp,
+            },
+        },
     }
 
     for method_id, emb_method in embeddings.items():
@@ -662,17 +325,11 @@ def main():
         print(" >>> EMBEDDING: {}".format(emb_method["name"]))
         embedding_df = emb_method["callable"](**emb_method["args"])
 
-        csv_out = os.path.join(DIR_PREPROCESSED, "{}_df.csv".format(method_id))
-        df_temp = pd.read_csv(csv_out)
-
-        # only save the new dataframe if it has more columns or more rows than the existing one
-        more_cols = df_temp.shape[1] < embedding_df.shape[1]
-        same_cols = df_temp.shape[1] == embedding_df.shape[1]
-        same_or_more_rows = df_temp.shape[0] <= embedding_df.shape[0]
-        if more_cols or (same_cols and same_or_more_rows):
-            embedding_df.to_csv(csv_out)
-        else:
-            print("\tnot saving new dataframe, as it appears to have less information than the current one.")
+        exp.store_embedding_df(
+            df=embedding_df,
+            dir_out=exp.DIR_PREPROCESSED,
+            df_id=method_id,
+        )
 
         for cl_id, cl in clustering.items():
 
@@ -680,7 +337,7 @@ def main():
             print(" >>> \tembedding: {:<15}\tclustering: {}".format(emb_method["name"], cl["name"]))
             # print(embedding_df[cluster_col].value_counts())
 
-            plot_everything(
+            exp.plot_everything(
                 graph=ds_graph,
                 embedding_df=embedding_df,
                 meta={
@@ -692,7 +349,7 @@ def main():
                 cluster_col=cluster_col,
             )
 
-        plot_db_scores()
+        exp.plot_db_scores()
 
 
 if __name__ == "__main__":
