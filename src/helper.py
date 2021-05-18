@@ -32,9 +32,10 @@ class Experiment():
         """
 
         # params for inputs
-        self.DIR_DATASETS_BASE = dir_dataset_base
-        # self.DIR_DB = os.path.join(self.DIR_DATASETS_BASE, "enron/preprocessed")
-        self.DIR_DB = self.DIR_DATASETS_BASE
+        ds_split = exp_type.split("_")
+        self.DB_NAME, self.DB_VARIATION = ds_split[0], "_".join(ds_split[1:])
+        self.DIR_DATASETS_BASE = os.path.normpath(dir_dataset_base)
+        self.DIR_DB = os.path.join(self.DIR_DATASETS_BASE, self.DB_NAME)
         self.SUBSET_SIZE = -10_000
         FULL_OR_SUBSET_SIZE = self.SUBSET_SIZE if self.SUBSET_SIZE > 0 else "full"
         self.db_path = None
@@ -61,12 +62,12 @@ class Experiment():
         print(" >>> EXP TYPE: {}".format(exp_type))
 
         # params for outputs
-        self.OUTPUT_EXTENSION = "png"    # svg | pdf | png
-        self.PLOTS_SUBDIR = "plots_{}".format(exp_type)
-        self.DIR_PLOTS = os.path.join("outputs", self.PLOTS_SUBDIR)
-        self.DIR_EMBEDDINGS = os.path.join("outputs", "embeddings")
-        self.DIR_PREPROCESSED = os.path.join(self.DIR_EMBEDDINGS, "preprocessed")
+        self.DIR_OUTPUTS_BASE = "outputs"
+        self.DIR_PLOTS = os.path.join(self.DIR_OUTPUTS_BASE, "plots_{}".format(exp_type))
+        self.DIR_EMBEDDINGS = os.path.join(self.DIR_OUTPUTS_BASE, "embeddings".format(exp_type))
+        self.DIR_PREPROCESSED = os.path.join(self.DIR_EMBEDDINGS, "preprocessed_{}".format(exp_type))
         self.DIR_CACHE = "./cache"
+        self.OUT_PLOTS_EXTENSION = "png"    # svg | pdf | png
         self.RANDOM_STATE = random_state
         self.COLORS = list(mcolors.TABLEAU_COLORS.values()) + list(mcolors.CSS4_COLORS.values())
 
@@ -86,18 +87,15 @@ class Experiment():
             one with the edge list, the other with the node ground-truth.
         """
 
-        ds_split = exp_type.split("_")
-        dataset, variation = ds_split[0], "_".join(ds_split[1:])
-
-        db_edges = os.path.join(self.DIR_DB, dataset, "{}.edgelist".format(variation))
-        db_nodes = os.path.join(self.DIR_DB, dataset, "{}.nodes".format(variation))
+        db_edges = os.path.join(self.DIR_DB, "{}.edgelist".format(self.DB_VARIATION))
+        db_nodes = os.path.join(self.DIR_DB, "{}.nodes".format(self.DB_VARIATION))
         df_edges = pd.read_csv(db_edges, sep="\s+", header=None, names=["From", "To", "Timestamp"])
         df_nodes = pd.read_csv(db_nodes, sep="\s+", header=None, names=["Node", "Anomaly"])
 
         return df_edges, df_nodes
 
 
-    def load_edgelist_as_graph(self, db_path=None, df=None, edge_attr=["Dates"]):
+    def load_edgelist_as_graph(self, db_path=None, df=None, edge_attr=["Dates"], names=None):
         """Loads pre-processed Enron dataset as a graph."""
 
         assert any([x is not None for x in [db_path, df]]),\
@@ -107,7 +105,7 @@ class Experiment():
 
             # load dataset as a dataframe
             print("Loading {}...".format(db_path))
-            df = pd.read_csv(db_path)
+            df = pd.read_csv(db_path, names=names)
 
             # remove spaces from emails
             for col in ["From", "To"]:
@@ -198,7 +196,7 @@ class Experiment():
         kneedle.plot_knee()
         PLT_SUBPLOT = "knee"
         os.makedirs(os.path.join(self.DIR_PLOTS, PLT_SUBPLOT), exist_ok=True)
-        knee_fname = os.path.join(self.DIR_PLOTS, PLT_SUBPLOT, "{}.{}".format(knee_id, self.OUTPUT_EXTENSION))
+        knee_fname = os.path.join(self.DIR_PLOTS, PLT_SUBPLOT, "{}.{}".format(knee_id, self.OUT_PLOTS_EXTENSION))
         plt.savefig(knee_fname)
         plt.close()
         print("Saved knee plot as '{}'".format(knee_fname))
@@ -235,7 +233,7 @@ class Experiment():
             plt.title("DB index scores{}".format(title_suffix))
             if plot_id is None:
                 plot_id = str(datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S"))
-            fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(plot_id, self.OUTPUT_EXTENSION))
+            fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(plot_id, self.OUT_PLOTS_EXTENSION))
             plt.tight_layout()
             plt.savefig(fname)
             plt.close()
@@ -254,7 +252,7 @@ class Experiment():
 
         PLT_SUBDIR = "db-index"
         os.makedirs(os.path.join(self.DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-        fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "all-scores.{}".format(self.OUTPUT_EXTENSION))
+        fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "all-scores.{}".format(self.OUT_PLOTS_EXTENSION))
 
         data = {
             "n2v_db_search": {
@@ -351,7 +349,7 @@ class Experiment():
 
             PLT_SUBDIR = "scatter"
             os.makedirs(os.path.join(self.DIR_PLOTS, PLT_SUBDIR), exist_ok=True)
-            fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(cluster_col, self.OUTPUT_EXTENSION))
+            fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "{}.{}".format(cluster_col, self.OUT_PLOTS_EXTENSION))
 
             # subplots
             fig, axs = plt.subplots(2, figsize=(6, 6), gridspec_kw={'height_ratios': [4, 1]})
@@ -417,7 +415,7 @@ class Experiment():
 
             for layout_style, layout_kwargs in all_layouts.items():
 
-                fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "{}_{}.{}".format(cluster_col, layout_style, self.OUTPUT_EXTENSION))
+                fname = os.path.join(self.DIR_PLOTS, PLT_SUBDIR, "{}_{}.{}".format(cluster_col, layout_style, self.OUT_PLOTS_EXTENSION))
 
                 plt.figure(figsize=(20,20))
                 # pos = nx.spring_layout(graph)

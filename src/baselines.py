@@ -8,8 +8,8 @@ import networkx as nx
 from node2vec import Node2Vec
 
 from sklearn.manifold import SpectralEmbedding
-from sklearn.metrics import davies_bouldin_score
 from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
+from sklearn.metrics import davies_bouldin_score, classification_report
 
 import helper
 
@@ -197,7 +197,7 @@ def n2v_cluster(emb_fname, data_graph, clustering=["kmeans"], exp=None, plot_db_
     return n2v_embedding_df
 
 
-def dw_cluster(emb_fname, node_map_fname, clustering="kmeans", exp=None, plot_db_index=True, cluster_gt=None):
+def dw_cluster(emb_fname, node_map_fname=None, clustering="kmeans", exp=None, plot_db_index=True, cluster_gt=None):
     """
         Loads precomputed deepwalk embeddings and runs the clustering on them.
         emb_fname (str):        path to file containing the list of node IDs coordinates in the X,Y embedding space.
@@ -206,12 +206,19 @@ def dw_cluster(emb_fname, node_map_fname, clustering="kmeans", exp=None, plot_db
 
     clustering = [ clustering ] if isinstance(clustering, str) else clustering
 
-    # load node email-id lookup
-    node_names_to_node_ids = joblib.load(node_map_fname)
-    node_ids_to_node_names = { node_id: name for name, node_id in node_names_to_node_ids.items() }
-
     # load deepwalk embeddings
+    print(" >>> Reading Deepwalk embedding: '{}'".format(emb_fname))
     dw_df = pd.read_csv(emb_fname, skiprows=1, sep=" ", names=["node_id", "emb_x", "emb_y"])
+
+    # load node email-id lookup
+    if node_map_fname is not None:
+        node_names_to_node_ids = joblib.load(node_map_fname)
+        node_ids_to_node_names = { node_id: name for name, node_id in node_names_to_node_ids.items() }
+    # or use node IDs as their names
+    else:
+        print("Node map not specified, using node IDs as their names.")
+        node_ids_to_node_names = { node_id: node_id for node_id in dw_df["node_id"] }
+
     dw_df.insert(0, 'node_name', dw_df["node_id"].apply(lambda x: node_ids_to_node_names[x]))
 
     # extract embeddings only
@@ -260,25 +267,46 @@ def dw_cluster(emb_fname, node_map_fname, clustering="kmeans", exp=None, plot_db
     return dw_df
 
 
-def main():
+def anomaly_supervised_eval(df_pred, df_gt, pred_col="clustering", gt_col="anomaly", pred_id="node_id", gt_id="Node", title=None):
+    """Given a prediction and a ground-truth dataframe, runs a supervised evaluation of the anomaly predictions."""
 
-    # params
-    # exp_type = "enron_full"
-    # exp_type = "enron_comparable"
-    # exp_type = "synth_p001_a003"
-    exp_type = "synth_p00025_a005"
+    gt_series = df_gt[gt_col].apply(lambda x: "Anomaly" if x == 1 else "Normal")
+    pred_series = df_pred[pred_col].apply(lambda x: "Anomaly" if x == -1 else "Normal")
 
-    dir_dataset_base = "/media/Data/datasets/graphs/"
-    dir_dataset_base = "../data/"
+    # print(gt_series.value_counts())
+    # print(df_gt[gt_col].value_counts())
+    # print(pred_series.value_counts())
+    # print(df_pred[pred_col].value_counts())
+
+    if title:
+        print("\n\t ::: {} :::".format(title))
+    print(classification_report(
+        y_true=gt_series,
+        y_pred=pred_series,
+    ))
+
+
+def run_experiment(exp_type, db_dir="../data/"):
+
     exp = helper.Experiment(
         exp_type,
-        dir_dataset_base=dir_dataset_base,
+        dir_dataset_base=db_dir,
         random_state=RANDOM_STATE,
     )
 
-    df_edges, df_nodes = exp.load_synthetic_dataset(exp_type=exp_type)
-    ds_graph = exp.load_edgelist_as_graph(db_path=exp.db_path) \
-        if exp.db_path is not None else exp.load_edgelist_as_graph(df=df_edges, edge_attr=["Timestamp"])
+    # vars init
+    df_nodes_gt = None
+    dw_node_map = None
+
+    # real dataset
+    if exp.db_path is not None:
+        ds_graph = exp.load_edgelist_as_graph(db_path=exp.db_path, names=["Dates", "From", "To"])
+        if exp_type.startswith("enron_"):
+            dw_node_map = os.path.join(exp.DIR_EMBEDDINGS, "deepwalk_node_lookup.bin")
+    # synthetic dataset
+    else:
+        df_edges, df_nodes_gt = exp.load_synthetic_dataset(exp_type=exp_type)
+        ds_graph = exp.load_edgelist_as_graph(df=df_edges, edge_attr=["Timestamp"])
 
     clustering = {
         "kmeans": { "name": "K-means" },
@@ -292,9 +320,9 @@ def main():
                 "emb_fname": os.path.join(exp.DIR_EMBEDDINGS, exp.N2V_EMBEDDING),
                 "data_graph": ds_graph,
                 "clustering": list(clustering.keys()),
-                "cluster_gt": df_nodes,
                 "exp": exp,
             },
+            "cluster_gt": df_nodes_gt,
         },
         "sc": {
             "name": "Spectral Clustering",
@@ -302,46 +330,61 @@ def main():
             "args": {
                 "data_graph": ds_graph,
                 "clustering": list(clustering.keys()),
-                "cluster_gt": df_nodes,
                 "exp": exp,
             },
+            "cluster_gt": df_nodes_gt,
         },
         "dw": {
             "name": "Deepwalk",
             "callable": dw_cluster,
             "args": {
                 "emb_fname": os.path.join(exp.DIR_EMBEDDINGS, exp.DW_EMBEDDING),
-                "node_map_fname": os.path.join(exp.DIR_EMBEDDINGS, "deepwalk_node_lookup.bin"),
+                "node_map_fname": dw_node_map,
                 "clustering": list(clustering.keys()),
-                "cluster_gt": df_nodes,
                 "exp": exp,
             },
+            "cluster_gt": df_nodes_gt,
         },
     }
 
-    for method_id, emb_method in embeddings.items():
+    for emb_method_id, payload in embeddings.items():
 
         # run embedding and clustering methods
-        print(" >>> EMBEDDING: {}".format(emb_method["name"]))
-        embedding_df = emb_method["callable"](**emb_method["args"])
+        print(" >>> EMBEDDING: {}".format(payload["name"]))
+        embedding_df = payload["callable"](**payload["args"])
 
         exp.store_embedding_df(
             df=embedding_df,
             dir_out=exp.DIR_PREPROCESSED,
-            df_id=method_id,
+            df_id=emb_method_id,
         )
 
         for cl_id, cl in clustering.items():
 
-            cluster_col = "{}_{}".format(method_id, cl_id)
-            print(" >>> \tembedding: {:<15}\tclustering: {}".format(emb_method["name"], cl["name"]))
+            cluster_col = "{}_{}".format(emb_method_id, cl_id)
+            print(" >>> \tembedding: {:<15}\tclustering: {}".format(payload["name"], cl["name"]))
             # print(embedding_df[cluster_col].value_counts())
+
+            if payload["cluster_gt"] is not None:
+                if cl_id == "dbscan":
+                    print("Running supervised evaluation...")
+                    anomaly_supervised_eval(
+                        df_pred=embedding_df,
+                        df_gt=payload["cluster_gt"],
+                        pred_col=cluster_col,
+                        gt_col="Anomaly",
+                        title=payload["name"],
+                    )
+                else:
+                    print("Skipping supervised evaluation for clustering != 'dbscan'")
+            else:
+                print("Anomaly ground-truth not found, skipping supervised evaluation")
 
             exp.plot_everything(
                 graph=ds_graph,
                 embedding_df=embedding_df,
                 meta={
-                    "embedding": emb_method["name"],
+                    "embedding": payload["name"],
                     "clustering": cl["name"],
                 },
                 # plot_scatter=False,
@@ -350,6 +393,21 @@ def main():
             )
 
         exp.plot_db_scores()
+
+
+def main():
+
+    experiments = [
+        # "enron_full",
+        # "enron_comparable",
+        # "synth_p001_a003",
+        "synth_p00025_a005",
+    ]
+
+    for exp_type in experiments:
+        print("")
+        run_experiment(exp_type, db_dir="../data/")
+        print("\n------------\n\n")
 
 
 if __name__ == "__main__":
