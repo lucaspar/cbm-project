@@ -7,7 +7,12 @@ import pandas as pd
 import networkx as nx
 from node2vec import Node2Vec
 
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
+from sklearn.decomposition import PCA
 from sklearn.manifold import SpectralEmbedding
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.cluster import DBSCAN, KMeans, SpectralClustering
 from sklearn.metrics import davies_bouldin_score, classification_report
 
@@ -130,7 +135,7 @@ def sc_cluster(data_graph, clustering=["kmeans"], plot_db_index=True, exp=None, 
             allow_duplicates=True,
         )
 
-    print(sc_df.head(10))
+    # print(sc_df.head(10))
     return sc_df
 
 
@@ -193,7 +198,7 @@ def n2v_cluster(emb_fname, data_graph, clustering=["kmeans"], exp=None, plot_db_
             allow_duplicates=True,
         )
 
-    print(n2v_embedding_df.head(10))
+    # print(n2v_embedding_df.head(10))
     return n2v_embedding_df
 
 
@@ -263,20 +268,30 @@ def dw_cluster(emb_fname, node_map_fname=None, clustering="kmeans", exp=None, pl
             allow_duplicates=True,
         )
 
-    print(dw_df.head(10))
+    # print(dw_df.head(10))
     return dw_df
 
 
-def anomaly_supervised_eval(df_pred, df_gt, pred_col="clustering", gt_col="anomaly", pred_id="node_id", gt_id="Node", title=None):
+def anomaly_supervised_eval(df_pred, df_gt, pred_col="clustering", ANOMALY_LABEL=-1, gt_col="anomaly", pred_id="node_id", gt_id="Node", title=None):
     """Given a prediction and a ground-truth dataframe, runs a supervised evaluation of the anomaly predictions."""
 
-    gt_series = df_gt[gt_col].apply(lambda x: "Anomaly" if x == 1 else "Normal")
-    pred_series = df_pred[pred_col].apply(lambda x: "Anomaly" if x == -1 else "Normal")
+    print(df_pred.head())
+    print(df_gt.head())
+    print(pred_id, gt_id)
+    merged = pd.merge(left=df_pred, right=df_gt, left_on=pred_id, right_on=gt_id)
+    # print(merged.head(500))
 
-    # print(gt_series.value_counts())
+    gt_series = merged[gt_col].apply(lambda x: "Anomaly" if x == 1 else "Normal")
+    pred_series = merged[pred_col].apply(lambda x: "Anomaly" if x == ANOMALY_LABEL else "Normal")
+    # pred_series = merged[pred_col].apply(lambda x: "Anomaly" if x == -1 else "Normal")
+
+    print("Ground-truth frequencies:")
+    print(gt_series.value_counts())
     # print(df_gt[gt_col].value_counts())
-    # print(pred_series.value_counts())
+    print("Prediction frequencies:")
+    print(pred_series.value_counts())
     # print(df_pred[pred_col].value_counts())
+    print()
 
     if title:
         print("\n\t ::: {} :::".format(title))
@@ -305,7 +320,7 @@ def run_experiment(exp_type, db_dir="../data/"):
             dw_node_map = os.path.join(exp.DIR_EMBEDDINGS, "deepwalk_node_lookup.bin")
     # synthetic dataset
     else:
-        df_edges, df_nodes_gt = exp.load_synthetic_dataset(exp_type=exp_type)
+        df_edges, df_nodes_gt = exp.load_synthetic_dataset()
         ds_graph = exp.load_edgelist_as_graph(df=df_edges, edge_attr=["Timestamp"])
 
     clustering = {
@@ -395,6 +410,104 @@ def run_experiment(exp_type, db_dir="../data/"):
         exp.plot_db_scores()
 
 
+def plot_scatter(embedding_df, clustering_df, colors):
+
+    color_map, cluster_freqs = dict(), dict()
+    frequencies_iter = clustering_df['cluster'].value_counts().iteritems()
+    for idx, (cluster, freq) in enumerate(frequencies_iter):
+        color = colors[idx % len(colors)]
+        color_map[cluster] = color
+        cluster_freqs[cluster] = freq
+    x = cluster_freqs.keys()
+    heights = cluster_freqs.values()
+
+    fig, ax = plt.subplots()
+    marker_size = 5 / np.log10(embedding_df["emb_x"].shape[0]) + 4
+    ax = embedding_df.plot.scatter("emb_x", "emb_y",
+        ax=ax,
+        color=clustering_df['cluster'].map(color_map),
+        s=marker_size,
+        # cmap='viridis',
+    )
+    if -1 in color_map:
+        outlier_color = color_map[-1] if -1 in color_map else None
+        outlier_patch = mpatches.Patch(color=outlier_color, label='DBSCAN Outliers')
+        ax.legend(handles=[outlier_patch])
+    fig.savefig('scatter.pdf')
+
+    fig, ax = plt.subplots()
+    ax.bar(x, height=heights, color=list(color_map.values()))
+    # add_value_labels(ax, fontsize=6)
+    fig.savefig('bars.pdf')
+
+    return
+
+
+def eval_egonet(exp_type, db_dir):
+
+    exp = helper.Experiment(
+        exp_type,
+        dir_dataset_base=db_dir,
+        random_state=RANDOM_STATE,
+    )
+
+    embeddings = {}
+    with open('../embeddings/synthetic_clique_{}.emb'.format(exp.DB_VARIATION)) as fp:
+        for line in fp:
+            node, vector = line.strip().split('\t')
+            embeddings[int(node)] = list(map(float, vector.replace(',', '').replace('[', '').replace(']', '').split(' ')))
+
+    egonet_emb = np.asarray([vector for vector in embeddings.values()])
+    _, y = exp.find_elbow(egonet_emb)
+
+    from sklearn.preprocessing import RobustScaler
+
+    # reduce dimensions
+    scaler = StandardScaler()
+    # scaler = MinMaxScaler()
+    # scaler = RobustScaler()
+    egonet_emb = scaler.fit_transform(egonet_emb)
+    pca = PCA(n_components=2)
+    Y = pca.fit_transform(egonet_emb)
+    embedding_df = pd.DataFrame(egonet_emb)
+
+    # apply DBSCAN to label outliers
+    clustering = DBSCAN(eps=y, min_samples=2).fit(egonet_emb)
+    clustering_dict = { 'node': list(range(len(clustering.labels_))), 'cluster': clustering.labels_ }
+    clustering_df = pd.DataFrame(clustering_dict)
+
+    print(clustering_df.cluster.value_counts())
+
+    pca_df = pd.DataFrame(Y)
+    pca_df.columns = ['emb_x', 'emb_y']
+    # pca_df.columns = ['emb_x', 'emb_y', 'emb_z']
+    pca_df.reset_index(level=0, inplace=True)
+
+    print(clustering_df.tail())
+    print(pca_df.tail())
+    final_df = pd.merge(
+        left=clustering_df, left_on='node',
+        right=pca_df,       right_on='index',
+        how="outer",
+    )
+    print(final_df.head())
+
+    _, df_nodes_gt = exp.load_synthetic_dataset()
+
+    anomaly_supervised_eval(
+        df_pred=clustering_df,
+        df_gt=df_nodes_gt,
+        ANOMALY_LABEL=1,
+        pred_col="cluster",
+        pred_id="node",
+        gt_id="Node",
+        gt_col="Anomaly",
+        title="Egonet",
+    )
+
+    plot_scatter(pca_df, clustering_df, colors=exp.COLORS)
+
+
 def main():
 
     experiments = [
@@ -404,10 +517,15 @@ def main():
         "synth_p00025_a005",
     ]
 
+    # run baseline experiments
     for exp_type in experiments:
+
         print("")
         run_experiment(exp_type, db_dir="../data/")
         print("\n------------\n\n")
+
+        # run evaluation on egonet
+        eval_egonet(exp_type, db_dir="../data/")
 
 
 if __name__ == "__main__":

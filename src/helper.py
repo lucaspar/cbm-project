@@ -67,7 +67,7 @@ class Experiment():
         self.DIR_EMBEDDINGS = os.path.join(self.DIR_OUTPUTS_BASE, "embeddings".format(exp_type))
         self.DIR_PREPROCESSED = os.path.join(self.DIR_EMBEDDINGS, "preprocessed_{}".format(exp_type))
         self.DIR_CACHE = "./cache"
-        self.OUT_PLOTS_EXTENSION = "png"    # svg | pdf | png
+        self.OUT_PLOTS_EXTENSION = "pdf"    # svg | pdf | png
         self.RANDOM_STATE = random_state
         self.COLORS = list(mcolors.TABLEAU_COLORS.values()) + list(mcolors.CSS4_COLORS.values())
 
@@ -81,7 +81,7 @@ class Experiment():
             os.makedirs(d, exist_ok=True)
 
 
-    def load_synthetic_dataset(self, exp_type):
+    def load_synthetic_dataset(self):
         """
             Loads the synthetically generated dataset returning two dataframes:
             one with the edge list, the other with the node ground-truth.
