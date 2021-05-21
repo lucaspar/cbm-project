@@ -1,4 +1,4 @@
-# cbm-project-EgoNet
+# EgoNet
 Computational Behavior Modeling project - Spring 2021
 
 Navigate to our final paper:  
