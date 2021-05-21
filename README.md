@@ -2,8 +2,9 @@
 Computational Behavior Modeling project - Spring 2021
 
 Navigate to our final paper:  
+```sh
 /Output/2021___CBM___Temporal_Egonet_Transitions.pdf
-
+```
 
 ### Baselines 
 1. [node2vec](https://github.com/eliorc/node2vec)
