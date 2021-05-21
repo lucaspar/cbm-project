@@ -1,11 +1,9 @@
-# cbm-project
+# cbm-project-EgoNet
 Computational Behavior Modeling project - Spring 2021
 
-### cleaned dataset from https://www.kaggle.com/oalvay/enron-emails-complete-preprocessing?select=emails_cleaned.csv
-/data/emails_cleaned_Eric.csv
+final paper:
 
-### PCA and Kmean code
-/src/dataset_preprocessing_emails_cleaned_PCA_KMeans.ipynb
+
 
 ### Baselines 
 1. [NetWalk](https://github.com/chengw07/NetWalk)
