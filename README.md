@@ -1,7 +1,7 @@
 # cbm-project-EgoNet
 Computational Behavior Modeling project - Spring 2021
 
-Navigate to our final paper:
+Navigate to our final paper:  
 /Output/2021___CBM___Temporal_Egonet_Transitions.pdf
 
 
