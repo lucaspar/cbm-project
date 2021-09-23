@@ -513,8 +513,8 @@ def main():
     experiments = [
         # "enron_full",
         # "enron_comparable",
-        # "synth_p001_a003",
-        "synth_p00025_a005",
+        "synth_p001_a003",
+        # "synth_p00025_a005",
     ]
 
     # run baseline experiments
